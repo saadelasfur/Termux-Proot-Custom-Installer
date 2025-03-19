@@ -1,190 +1,284 @@
-#!/data/data/com.termux/files/usr/bin/sh
+#!/data/data/com.termux/files/usr/bin/bash
+#
+# Copyright (C) 2025 23xvx
+# Copyright (C) 2025 saadelasfur
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
 
-SCRIPT=$PREFIX/etc/proot-distro/
-PD=$PREFIX/var/lib/proot-distro/installed-rootfs
-ARCHITECTURE=$(dpkg --print-architecture)
+# [
+abort()
+{
+    echo ""
+    echo red "ERROR: $@"
+    exit 1
+}
 
-#Adding colors
-RST="$(printf '\033[0m')"
-R="$(printf '\033[1;31m')"
-G="$(printf '\033[1;32m')"
-Y="$(printf '\033[1;33m')"
-W="$(printf '\033[1;37m')"
-C="$(printf '\033[1;36m')"
+# https://github.com/RandomCoderOrg/fs-manager-udroid/blob/5874a7d40e56f4ab86377ccf4701f20b11ac0063/udroid/src/udroid.sh#L104-L128
+ask()
+{
+    local msg="$*"
+
+    echo green "$msg"
+    read -p "[y/n]: " choice
+
+    case "$choice" in
+        y | Y | yes | YES)
+            return 0
+            ;;
+        n | N | no | NO)
+            return 1
+            ;;
+        "")
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+echo()
+{
+    case "$1" in
+        cyan)
+            command echo -e "\033[0;96m$2\033[0m"
+            ;;
+        green)
+            command echo -e "\033[0;92m$2\033[0m"
+            ;;
+        red)
+            command echo -e "\033[0;91m$2\033[0m"
+            ;;
+        yellow)
+            command echo -e "\033[0;93m$2\033[0m"
+            ;;
+        *)
+            command echo "$@"
+            ;;
+    esac
+}
+# ]
+
+# Set HOME path
+HOME="$(echo ~)"
+
+# Set common variables
+SCRIPT="$PREFIX/etc/proot-distro"
+PD="$PREFIX/var/lib/proot-distro/installed-rootfs"
+
+# Get architecture
+ARCHITECTURE="$(dpkg --print-architecture)"
 
 # Arguments taken if needed
-if [ -z "$1" ]; then
-    mode="normal"
+if [[ -z "$1" ]]; then
+    MODE="normal"
 else
-    mode="args"
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            -h|--help)
-                echo "${G} Usage: ${W} $0 <options> ${RST}"
-                echo
-                echo "${G} The script will ask for the URL and name of the distro during installation as default"
-                echo "${G} If you want to provide the URL and name as arguments, use the following options:"
-                echo
-                echo "${Y}     --url <url>          ${C}URL of the rootfs tarball${RST}" 
-                echo "${Y}     --name <name>        ${C}name of the distro${RST}"
+    MODE="args"
+    while [[ $# -gt 0 ]]
+    do
+        case "$1" in
+            -h | --help)
+                echo ""
+                echo green "Usage: $0 <options>"
+
+                echo ""
+                echo green "The script will ask for the URL and name of the distro during installation as default"
+                echo green "If you want to provide the URL and name as arguments, use the following options:"
+
+                echo ""
+                echo green "    --url <url>          URL of the rootfs tarball"
+                echo green "    --name <name>        name of the distro"
                 exit 0
                 ;;
             --url)
-                [[ -z "$2" ]] && echo "${R}URL not provided after '${Y}--url${R}'${RST}" && exit 1
-                [[ $2 == -* ]] && echo "${R}option '${Y}${2}${R}' cannot be used after '${Y}--url'${RST}" && exit 1
-                url=$2
+                [[ -z "$2" ]] && abort "URL not provided after \"--url\""
+                [[ "$2" == "-"* ]] && abort "option \"${2}\" cannot be used after \"--url\""
+                URL="$2"
                 shift 2
                 ;;
             --name)
-                [[ -z "$2" ]] && echo "${R}Name not provided after '${Y}--name${R}'${RST}" && exit 1
-                [[ $2 == -* ]] && echo "${R}option '${Y}${2}${R}' cannot be used after '${Y}--name'${RST}" && exit 1
-                name=$2
+                [[ -z "$2" ]] && abort "Name not provided after \"--name\""
+                [[ "$2" == "-"* ]] && abort "option \"${2}\" cannot be used after \"--name\""
+                NAME="$2"
                 shift 2
                 ;;
-            *) echo "${R}Unknown option '${Y}$1${R}'${RST}" && exit 1 ;;
+            *)
+                abort "Unknown option \"${1}\""
+                ;;
         esac
     done
 fi
 
-# Check if required arguments are provided
-if [[ $mode == "args" ]]; then
-    if [[ -z $url ]]; then
-        echo "${R}URL not provided with '${Y}--url${R}'${RST}"
-        exit 1
+# Check if the required arguments are provided
+if [[ "$MODE" == "args" ]]; then
+    if [[ -z "$URL" ]]; then
+        abort "URL not provided with \"--url\""
     fi
-    if [[ -z $name ]]; then
-        echo "${R}Name not provided with '${Y}--name${R}'${RST}"
-        exit 1
+    if [[ -z "$NAME" ]]; then
+        abort "Name not provided with \"--name\""
     fi
 fi
 
-# some functions
-## ask() - prompt the user with a message and wait for a Y/N answer
-## copied from udroid 
-ask() {
-    local msg=$*
+if [[ "$(basename "$URL")" != *.tar.xz ]]; then
+    abort "Rootfs file is not a tarball"
+fi
 
-    echo -ne "$msg\t[y/n]: "
-    read -r choice
+# Warning
+sleep 2 && clear
 
-    case $choice in
-        y|Y|yes) return 0;;
-        n|N|No) return 1;;
-        "") return 0;;
-        *) return 1;;
-    esac
-}
-
-#Warning
-clear
-echo ${R}"Warning!
+echo red "Warning!
 This script is based on the functions of proot-distro
 Errors may occur during installation."
-sleep 3
 
-#requirements
-echo ${G}"Installing requirements"${RST}
-pkg install wget proot-distro -y
+echo ""
+echo cyan "Script made by 23xvx"
+echo cyan "Modified by saadelasfur"
 sleep 1
-clear
 
-#Notice
-echo ${C}"Your architecture is $ARCHITECTURE ."
-case `dpkg --print-architecture` in
+echo ""
+echo green "Installing dependencies..."
+(apt update && apt install proot-distro wget -y) &> /dev/null
+
+echo ""
+sleep 2 && clear
+cd "$HOME"
+
+# Notice
+echo cyan "Your architecture is \"$ARCHITECTURE\""
+case "$ARCHITECTURE" in
     aarch64)
-        arch="arm64" ;;
+        ARCH="arm64"
+        ;;
     arm*)
-        arch="armhf" ;;
-    x86_64|amd64)
-        arch="amd64" ;;
+        ARCH="armhf"
+        ;;
+    x86_64 | amd64)
+        ARCH="amd64"
+        ;;
     *)
-        echo "Unknown architecture"
-        exit 1 ;;
+        abort "Unsupported architecture!"
+        ;;
 esac
-echo "Please download the rootfs file for $arch." 
-echo "Press enter to continue"
+
+echo ""
+echo yellow "Please download the rootfs file for \"$ARCH\""
+echo yellow "Press enter to continue..."
 read enter
 sleep 1
-clear
 
-
-#Links
-if [[ $mode == "args" ]]; then
-    URL=$url
-    ds_name=$name
-    echo ${G}"Your URl is $URL${RST}"
+# Links
+if [[ "$MODE" == "args" ]]; then
+    URL="$URL"
+    DS_NAME="$NAME"
+    echo green "Your URL is \"$URL\""
 else
-    echo ${G}"Please put in your URL here for downloading rootfs: "${W}
-    read URL        
+    echo green "Please put in your URL here for downloading rootfs:"
+    echo ""
+    read URL
     sleep 1
     echo ""
-    echo ${G}"Please put in your distro name "
-    echo ${G}"If you put in 'gentoo', your login script will be "
-    echo ${G}" proot-distro login gentoo"
-    echo ${Y}"After proot-distro v3.17.0, these names cannot be used as distro name"
-    echo ${Y}" kali / parrot / nethunter / blackarch"${W}
-    read ds_name 
-    sleep 2
-    echo  
+    echo green "Please put in your distro name:"
+    echo green "If you put in \"gentoo\", your login script will be"
+    echo yellow "\"proot-distro login gentoo\""
+    echo ""
+    echo red "After proot-distro v3.17.0, these names cannot be used as distro name"
+    echo red "kali / parrot / nethunter / blackarch"
+    echo ""
+    read DS_NAME
+    sleep 1
 fi
 
-echo ${Y}"Your distro name is $ds_name "${RST}
-sleep 2
+echo ""
+echo yellow "Your distro name is \"$DS_NAME\""
+sleep 1
 
 if [[ ! -d "$PREFIX/var/lib/proot-distro" ]]; then
-    mkdir -p $PREFIX/var/lib/proot-distro
-    mkdir -p $PREFIX/var/lib/proot-distro/installed-rootfs
+    mkdir -p "$PREFIX/var/lib/proot-distro"
+    mkdir -p "$PREFIX/var/lib/proot-distro/installed-rootfs"
 fi
-rootfs_dir=$PD/$ds_name
-if [[ -d "$rootfs_dir" ]]; then
-    if ask "${G}Existing folder found, remove it ?${W}"; then
-        echo ${Y}"Deleting existing directory...."${RST}
-        chmod u+rwx -R $rootfs_dir
-        rm -rf $rootfs_dir
-        clear
-        if [ -d "$rootfs_dir" ]; then
-            echo ${R}"Cannot remove directory"; exit 1
+
+echo ""
+ROOTFS_DIR="$PD/$DS_NAME"
+if [[ -d "$ROOTFS_DIR" ]]; then
+    if ask "Existing folder found, remove it?"; then
+        echo yellow "Deleting existing directory..."
+        chmod u+rwx -R "$ROOTFS_DIR"
+        rm -rf "$ROOTFS_DIR"
+        if [[ -d "$ROOTFS_DIR" ]]; then
+            abort "Cannot remove directory"
         fi
     else
-        echo ${R}"Sorry, but we cannot complete the installation"
-        exit 1
+        abort "Sorry, we cannot complete the installation"
     fi
 fi
-clear
 
-#Downloading and Decompressing rootfs
-mkdir -p $rootfs_dir
-echo ${G}"Downloading rootfs"${RST}
-wget -q --show-progress $URL -P $rootfs_dir/.cache/ || ( echo ${R}"Error in downloading rootfs,exiting..." ; exit 1 )
-echo ${G}"Decompressing rootfs"
-archive=$(echo $URL | awk -F / '{print $NF}')
-sha256=$(sha256sum $rootfs_dir/.cache/$archive | awk '{ print $1}' )
-proot --link2symlink  \
-    tar --warning=no-unknown-keyword \
-        --delay-directory-restore --preserve-permissions \
-        -xpf $rootfs_dir/.cache/$archive -C $rootfs_dir/ --exclude='dev'||:
-rm -rf $rootfs_dir/.cache
+sleep 2 && clear
+
+# Download and decompress rootfs
+mkdir -p "$ROOTFS_DIR"
+ARCHIVE="$(basename "$URL")"
+echo green "Downloading $ARCHIVE..."
+wget -q --show-progress "$URL" -P "$ROOTFS_DIR/.cache/" || abort "Failed downloading rootfs, exiting..."
+
+echo ""
+echo green "Decompressing Rootfs..."
+SHA256="$(sha256sum "$ROOTFS_DIR/.cache/$ARCHIVE" | awk '{print $1}')"
+proot \
+      --link2symlink tar \
+      --warning=no-unknown-keyword \
+      --delay-directory-restore \
+      --preserve-permissions \
+      -xpf "$ROOTFS_DIR/.cache/$ARCHIVE" -C "$ROOTFS_DIR/" \
+      --exclude="dev"
+rm -rf "$ROOTFS_DIR/.cache"
 
 declare -i TARBALL_STRIP_OPT=0
-while [[ ! -d "$rootfs_dir/etc" ]] ; do
-    for dir in `ls $rootfs_dir`; do
-        mv $rootfs_dir/$dir/* $rootfs_dir/
-        chmod u+rwx -R $rootfs_dir/$dir
-        rm -rf $rootfs_dir/$dir
+while [[ ! -d "$ROOTFS_DIR/etc" ]]
+do
+    DIRS="$(ls $ROOTFS_DIR)"
+    for dir in $DIRS
+    do
+        mv "$ROOTFS_DIR/$dir/"* "$ROOTFS_DIR/"
+        chmod u+rwx -R "$ROOTFS_DIR/$dir"
+        rm -rf "$ROOTFS_DIR/$dir"
     done
-    TARBALL_STRIP_OPT=$TARBALL_STRIP_OPT+1
-    [[ -d "$rootfs_dir/etc" ]] && break
-    [[ $TARBALL_STRIP_OPT == 3 ]] && echo ${R}"Cannot find /etc in archive, exiting..." && exit 1
+    TARBALL_STRIP_OPT="$TARBALL_STRIP_OPT+1"
+    [[ -d "$ROOTFS_DIR/etc" ]] && break
+    if [[ "$TARBALL_STRIP_OPT" == 3 ]]; then
+        abort "Cannot find /etc in archive, exiting..."
+    fi
 done
 
-rm -rf $rootfs_dir/etc/hostname
-rm -rf $rootfs_dir/etc/resolv.conf
-touch $rootfs_dir/root/.hushlogin
-echo "localhost" > $rootfs_dir/etc/hostname
-echo "127.0.0.1 localhost " >> $rootfs_dir/etc/hosts
-echo "nameserver 8.8.8.8 " >> $rootfs_dir/etc/resolv.conf
-echo "touch .hushlogin" >> $rootfs_dir/root/.bashrc
-cat <<- EOF >> $rootfs_dir/etc/environment
+# Set up environment
+touch "$ROOTFS_DIR/root/.hushlogin"
+cat "$ROOTFS_DIR/etc/skel/.bashrc" > "$ROOTFS_DIR/root/.bashrc"
+{
+    echo ""
+    echo "touch .hushlogin"
+} >> "$ROOTFS_DIR/root/.bashrc"
+
+rm -f "$ROOTFS_DIR/etc/hostname"
+rm -f "$ROOTFS_DIR/etc/resolv.conf"
+
+echo "localhost" >> "$ROOTFS_DIR/etc/hostname"
+echo "127.0.0.1 localhost" >> "$ROOTFS_DIR/etc/hosts"
+{
+    echo "nameserver 8.8.8.8"
+    echo "nameserver 8.8.4.4"
+} >> "$ROOTFS_DIR/etc/resolv.conf"
+
+cat <<- EOF >> "$ROOTFS_DIR/etc/environment"
 EXTERNAL_STORAGE=/sdcard
 LANG=en_US.UTF-8
 MOZ_FAKE_NO_SANDBOX=1
@@ -194,26 +288,27 @@ TERM=${TERM-xterm-256color}
 TMPDIR=/tmp
 EOF
 
-#Adding distro in proot-distro list
-if [[ ! -f "$PREFIX/etc/proot-distro/$ds_name.sh" ]]; then
-echo "
-# This is a default distribution plug-in.
-# Do not modify this file as your changes will be overwritten on next update.
-# If you want customize installation, please make a copy.
+# Add the distro in proot-distro list
+if [[ ! -f "$PREFIX/etc/proot-distro/$DS_NAME.sh" ]]; then
+    echo "
+    # This is a default distribution plug-in.
+    # Do not modify this file as your changes will be overwritten on the next update.
+    # If you want to customize the installation, please make a copy.
 
-DISTRO_NAME='$ds_name'
-DISTRO_COMMENT='Custom distro : $ds_name'
-TARBALL_STRIP_OPT=$TARBALL_STRIP_OPT
+    DISTRO_NAME='$DS_NAME'
+    DISTRO_COMMENT='Custom distro: $DS_NAME'
+    TARBALL_STRIP_OPT=$TARBALL_STRIP_OPT
 
-TARBALL_URL['$ARCHITECTURE']='$URL'
-TARBALL_SHA256['$ARCHITECTURE']='$sha256'
-">> $SCRIPT/$ds_name.sh 
+    TARBALL_URL['$ARCHITECTURE']='$URL'
+    TARBALL_SHA256['$ARCHITECTURE']='$SHA256'
+    " >> "$SCRIPT/$DS_NAME.sh"
 fi
-sleep 2
-clear
 
-#Finish
-sleep 2
-echo ${G}"Installation Finish!"
-echo ${G}"Now you can login to your distro by" 
-echo ${Y}"proot-distro login $ds_name"
+sleep 2 && clear
+
+# Finish
+echo green "Installation complete!"
+echo green "Now you can login to your distro by:"
+echo yellow "proot-distro login $DS_NAME"
+
+echo ""
