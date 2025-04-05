@@ -126,9 +126,16 @@ if [[ "$MODE" == "args" ]]; then
     fi
 fi
 
-if [[ "$(basename "$URL")" != *.tar.xz ]]; then
-    abort "Rootfs file is not a tarball"
-fi
+FILE_NAME="$(basename "$URL")"
+TARBALL_TYPE="${FILE_NAME##*.}"
+
+case "$TARBALL_TYPE" in
+    xz|gz)
+        ;;
+    *)
+        abort "Rootfs file is not a supported tarball"
+        ;;
+esac
 
 # Warning
 sleep 2 && clear
