@@ -30,22 +30,23 @@ ask()
     local msg="$*"
 
     echo green "$msg"
-    read -p "[y/n]: " choice
 
-    case "$choice" in
-        y | Y | yes | YES)
-            return 0
-            ;;
-        n | N | no | NO)
-            return 1
-            ;;
-        "")
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
+    while true; do
+        read -p "[y/n]: " choice
+
+        case "$choice" in
+            y | Y | yes | YES)
+                return 0
+                ;;
+            n | N | no | NO)
+                return 1
+                ;;
+            *)
+                echo yellow "Invalid input: ${choice}"
+                echo yellow "Please enter [yes/no] or [y/n]"
+                ;;
+        esac
+    done
 }
 
 echo()
@@ -85,7 +86,7 @@ if [[ -z "$1" ]]; then
     MODE="normal"
 else
     MODE="args"
-    while [[ $# -gt 0 ]]
+    while [[ "$#" -gt 0 ]]
     do
         case "$1" in
             -h | --help)
@@ -101,13 +102,13 @@ else
                 echo green "    --name <name>        name of the distro"
                 exit 0
                 ;;
-            --url)
+            -u | --url)
                 [[ -z "$2" ]] && abort "URL not provided after \"--url\""
                 [[ "$2" == "-"* ]] && abort "option \"${2}\" cannot be used after \"--url\""
                 URL="$2"
                 shift 2
                 ;;
-            --name)
+            -n | --name)
                 [[ -z "$2" ]] && abort "Name not provided after \"--name\""
                 [[ "$2" == "-"* ]] && abort "option \"${2}\" cannot be used after \"--name\""
                 NAME="$2"
@@ -134,9 +135,10 @@ FILE_NAME="$(basename "$URL")"
 TARBALL_TYPE="${FILE_NAME##*.}"
 
 case "$TARBALL_TYPE" in
-    xz|gz)
+    xz | gz)
         ;;
     *)
+        echo yellow "Supported tarball types are \"xz\" and \"gz\""
         abort "Rootfs file is not a supported tarball"
         ;;
 esac
